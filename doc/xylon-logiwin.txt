@@ -1,0 +1,38 @@
+Binding for Xylon logiWIN versatile video input IP core
+
+Required properties:
+ - compatible: "xylon,logiwin-4.00.a"
+ - reg: MMIO base address and size of the logiWIN IP core address space
+ - interrupts-parent: the phandle for interrupt controller
+ - interrupts: the interrupt number
+ - input-num: number of connected video inputs (currently allowed only 1)
+ - input-format: video input format (dvi, itu, rgb)
+ - input-resolution: video input resolution
+ - output-format: output pixel format written to video buffer
+ - output-resolution: video input resolution
+      First resolution parameter defines logiWIN IP core output memory stride
+      (512, 1024, 2048).
+      Second resolution parameter defines vertical video resolution (max 2048).
+ - output-byte-align:
+ - scale-fraction-bits:
+
+Optional properties:
+ - vmem-address: video buffer address with range to store grabbed frame
+      If omitted, driver will allocate buffer from kernel CMA space.
+
+Example:
+
+	logiwin_sata_0: logiwin@40010000 {
+		compatible = "xylon,logiwin-4.00.a";
+		reg = <0x40010000 0x1000>;
+		interrupt-parent = <&intc>;
+		interrupts = <0 30 4>;
+		vmem-address = <0x38000000 0x1000000>;
+		input-num = <1>;
+		input-format = "itu";
+		input-resolution = <1280 720>;
+		output-format = "yuyv";
+		output-resolution = <2048 1080>;
+		output-byte-align = <2>;
+		scale-fraction-bits = <6>;
+	};

@@ -1,0 +1,14 @@
+menuconfig VIDEO_XYLON
+	bool "Xylon frame grabber support"
+	depends on VIDEO_V4L2 && V4L_PLATFORM_DRIVERS
+	default n
+	help
+	  Choose this option if you want to use Xylon frame grabber device.
+
+config XYLON_LOGIWIN_FG
+	tristate "Xylon logiWIN"
+	depends on VIDEO_XYLON
+	default n
+	help
+	  Choose this option if you want to use the Xylon logiWIN as frame
+	  grabber device.
