@@ -234,6 +234,9 @@ static int logiwin_update(struct logiwin *lw)
 
 			lw->flags |= LOGIWIN_FLAG_RESOLUTION;
 			wake_up_interruptible(&lw->wait_resolution);
+
+			lw->lw_cfg.input_hres = h;
+			lw->lw_cfg.input_vres = v;
 		}
 
 		lw->flags &= ~LOGIWIN_FLAG_RESOLUTION_CHANGE;

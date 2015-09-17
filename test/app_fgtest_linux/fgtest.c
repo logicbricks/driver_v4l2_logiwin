@@ -131,6 +131,8 @@ static volatile bool capture_loop;
 static volatile bool overlay_loop;
 static volatile bool scale_crop_loop;
 
+static unsigned char dummy_buff[1024*4*50];
+
 static int video_enable(struct video_device *vd)
 {
 	int ret, type;
@@ -221,7 +223,7 @@ err:
 	{
 		perror("Unable to get skipped frames cnt");
 	}
-	printf("Skipped frames: %d\n",skip);
+	printf("Skipped frames: %d\n", skip);
 
 	return -1;
 }
@@ -341,7 +343,6 @@ static int videodevice_init(struct video_device *vd)
 	if (vd->run_thread_position)
 		return 0;
 
-	/* request buffers */
 	memset(&vd->rb, 0, sizeof(struct v4l2_requestbuffers));
 	vd->rb.count = BUFFERS_NUM;
 	vd->rb.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -352,7 +353,7 @@ static int videodevice_init(struct video_device *vd)
 		perror("Unable to get buffers");
 		goto error_exit;
 	}
-	/* map the buffers */
+
 	for (i = 0; i < vd->rb.count; i++)
 	{
 		memset(&vd->buf, 0, sizeof(struct v4l2_buffer));
@@ -376,7 +377,7 @@ static int videodevice_init(struct video_device *vd)
 		}
 		printf(" mapped to %p\n", vd->mem[i]);
 	}
-	/* Queue the buffers. */
+
 	if (queue_buffers(vd))
 		goto error_exit;
 
@@ -401,7 +402,7 @@ static int check_video_device(struct video_device *vd)
 	if (vd == NULL)
 		return -1;
 
-	printf("Check device:\n");
+	puts("Check device:");
 	printf("\tDevice path: %s\n", vd->fgdev);
 	if ((vd->fgfd = open(vd->fgdev, O_RDWR)) == -1)
 	{
@@ -436,6 +437,56 @@ error_exit:
 	return 0;
 }
 
+static int wait_input_resolution_change(struct video_device *vd)
+{
+	int ret;
+
+	if (vd == NULL)
+		return -1;
+
+	puts("Check input resolution:");
+
+	if ((vd->fgfd = open(vd->fgdev, O_RDWR)) == -1)
+	{
+		perror("XylonFG device does not exist! Exit.");
+		exit(1);
+	}
+
+	memset(&vd->rb, 0, sizeof(struct v4l2_requestbuffers));
+	vd->rb.count = 1;
+	vd->rb.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	vd->rb.memory = V4L2_MEMORY_MMAP;
+	ret = ioctl(vd->fgfd, VIDIOC_REQBUFS, &vd->rb);
+	if (ret < 0)
+	{
+		perror("Unable to get buffer");
+		return -1;
+	}
+
+	if (queue_buffers(vd))
+		return -1;
+
+	video_enable(vd);
+
+	usleep(100000);
+
+	video_disable(vd);
+
+	if (ioctl(vd->fgfd, LOGIWIN_IOCTL_RESOLUTION_GET, &vd->resolution))
+	{
+		perror("Unable to get input resolution");
+	}
+	else
+	{
+		printf("\t%d pixels x %d lines\n",
+			vd->resolution.width, vd->resolution.height);
+	}
+
+	close(vd->fgfd);
+
+	return 0;
+}
+
 static int init_videodevice(struct video_device *vd, int width, int height,
 			    float fps, int format)
 {
@@ -444,7 +495,7 @@ static int init_videodevice(struct video_device *vd, int width, int height,
 	if (width == 0 || height == 0)
 		return -1;
 
-	printf("Device initialization:\n");
+	puts("Device initialization:");
 	printf("\tDevice path: %s\n", vd->fgdev);
 
 	if (width > 0 && height > 0)
@@ -456,7 +507,7 @@ static int init_videodevice(struct video_device *vd, int width, int height,
 
 	if (videodevice_init(vd) < 0)
 	{
-		printf("Failed! Exit.\n");
+		puts("Failed! Exit.");
 		goto error;
 	}
 
@@ -1194,9 +1245,9 @@ int main(int argc, char *argv[])
 	pthread_t thread[THREADS_NUM];
 	pthread_attr_t attr;
 	int i, w, h, fbsize;
-	int width, height;
+	int width, height, sw_buff;
 	float fps = 60.0;
-	bool sw_buff, hw_buff, console_off, swizzle;
+	bool hw_buff, console_off, swizzle;
 	bool run_thread_position, run_thread_scale_crop;
 
 	width = height = -1;
@@ -1314,6 +1365,9 @@ int main(int argc, char *argv[])
 	if (check_video_device(vdev) < 0)
 		goto out1;
 	puts("");
+
+	wait_input_resolution_change(vdev);
+
 	if (init_videodevice(vdev, width, height, fps, V4L2_PIX_FMT_RGB32) < 0)
 		goto out2;
 	puts("");
@@ -1417,15 +1471,6 @@ int main(int argc, char *argv[])
 		perror("Unable to enable swizzle");
 	}
 
-	if (ioctl(vdev->fgfd, LOGIWIN_IOCTL_RESOLUTION_GET, &vdev->resolution))
-	{
-		perror("Unable to get input resolution");
-	}
-	else
-	{
-		printf("\nDetected input resolution: %d pixels x %d lines\n",
-			vdev->resolution.width, vdev->resolution.height);
-	}
 //	vdev->sync_pol = V4L2_DV_VSYNC_POS_POL | V4L2_DV_HSYNC_POS_POL;
 //	if (ioctl(vdev->fgfd, LOGIWIN_IOCTL_SYNC_POLARITY, &vdev->sync_pol))
 //	{
@@ -1458,16 +1503,12 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			src = (unsigned char *)vdev->framebuffer;
-			if (sw_buff)
-			{
-				vdev->vinfo.yoffset = 0;
+
+			if(++sw_buff > 2)
 				sw_buff = 0;
-			}
-			else
-			{
-				vdev->vinfo.yoffset = vdev->vinfo.yres;
-				sw_buff = 1;
-			}
+
+			vdev->vinfo.yoffset = vdev->vinfo.yres * sw_buff;
+
 			dst = vdev->pfb +
 			      (vdev->vinfo.yoffset * vdev->finfo.line_length);
 			w = vdev->width * (vdev->bpp / 8);
@@ -1475,11 +1516,13 @@ int main(int argc, char *argv[])
 			for (i = 0; i < h; i++)
 			{
 				memcpy(dst, src, w);
-				/* clear after copying for scale/crop */
-//				memset(src, 0, w);
 				src += vdev->bpl;
 				dst += vdev->finfo.line_length;
 			}
+
+			/* flush CPU cache */
+			memcpy(dummy_buff + 1, dummy_buff, sizeof(dummy_buff) - 1);
+
 //			vdev->buffer_phys = 0;
 //			if (ioctl(vdev->fgfd, LOGIWIN_IOCTL_FRAME_PHYS_ADDRESS,
 //				  &vdev->buffer_phys))
