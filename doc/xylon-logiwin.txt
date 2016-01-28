@@ -15,6 +15,7 @@ Required properties:
       Second resolution parameter defines vertical video resolution (max 2048).
  - output-byte-align:
  - scale-fraction-bits:
+ - hw-buffer-switch: defined if hw tripple buffering is suported
 
 Optional properties:
  - vmem-address: video buffer address with range to store grabbed frame
@@ -35,4 +36,31 @@ Example:
 		output-resolution = <2048 1080>;
 		output-byte-align = <2>;
 		scale-fraction-bits = <6>;
+		//hw-buffer-switch; 
 	};
+
+
+DRIVER USAGE NOTES:
+   This driver supports two modes: standard frame capture mode and
+    video overlay mode.
+
+   Frame capture mode
+   ------------------
+   This mode currently implements software tripple buffering mechanism (logiWIN DMA
+   write address is set to one of the three buffers at each frame interrupt).
+   Buffering between application and driver is done using standard VIDIOC_DQBUF
+   and VIDIOC_QBUF calls. Memory mapping of the DMA video buffers into application space
+   is done in cached mode, driver does not ensure cache coherency of the video buffers.
+   To ensure cache coherency logiWIN must be connected over cache coherent Zynq ACP port.
+   Application must ensure the the video buffers are dequeued from the driver faster than
+   1/(input FPS), other wise frames will be lost.
+   Used calls: VIDIOC_REQBUFS (3 buffers), VIDIOC_QUERYBUF, VIDIOC_STREAMON, VIDIOC_DQBUF,
+               VIDIOC_QBUF (V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP)
+   
+   Video overlay mode
+   ------------------
+   This mode supports hw tripple buffering between logiWIN and typically display controller 
+   (e.g. logiCVC). See logiWIN user manual for connection of tripple buffering logiWIN signals
+   in FPGA. Driver requires that hw-buffer-switch is defined in dts.
+   Used calls:  VIDIOC_REQBUFS (3 buffers), VIDIOC_QUERYBUF, V4L2_BUF_TYPE_VIDEO_OVERLAY, VIDIOC_S_FBUF,
+                 VIDIOC_S_FBUF
